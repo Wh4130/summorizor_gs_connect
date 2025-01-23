@@ -177,7 +177,10 @@ class UserManager:
 
             # 成功登入
             st.session_state['logged_in'] = True
-            st.session_state['user_name'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_userId'] == user_id, "_username"].tolist()[0]
+            try:
+                st.session_state['user_name'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_userId'] == user_id, "_username"].tolist()[0]
+            except:
+                st.session_state['user_name'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_email'] == user_id, "_username"].tolist()[0]
             del ps_hash_cached
             del st.session_state["user_infos"]
             st.rerun()
