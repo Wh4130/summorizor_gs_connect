@@ -1,6 +1,5 @@
 gspread
 pandas
-time
 datetime
 oauth2client
 python-dotenv
