@@ -1,55 +1,59 @@
+from managers import *
 import streamlit as st
-import pandas as pd
-import time
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+import datetime as dt
 
-def authenticate_google_sheets():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credits.json", scope)
-    client = gspread.authorize(creds)
-    return client
+# * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# *** Sidebar Config
+with st.sidebar:
 
-def extract_sheet_id(sheet_url):
-    # 假設使用者輸入的是完整的 Google Sheets URL
-    try:
-        return sheet_url.split("/d/")[1].split("/")[0]
-    except IndexError:
-        st.error("無效的試算表連結，請檢查 URL 格式。")
-        return None
+    st.subheader("Essay Summarizer")
+
+# * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# *** Session State Config
+if "pdfs_raw" not in st.session_state:
+    st.session_state["pdfs_raw"] = {}
+
+# * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# *** HTML & CSS
+st.markdown("""<style>
+div.stButton > button {
+    width: 100%;  /* 設置按鈕寬度為頁面寬度的 50% */
+    height: 50px;
+    margin-left: 0;
+    margin-right: auto;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# *** Main
+if st.button("點擊上傳"):
+    DataManager.FORM_pdf_input()
+
+
+
+gs_url = st.text_input("請輸入您欲存放摘要資料的 Google Sheet 連結。")
+if st.button("確認送出"):
+    # * First check the sheet link
+    client = SheetManager.authenticate_google_sheets()
+    sheet_id = SheetManager.extract_sheet_id(gs_url)
+    if sheet_id == None:
+        st.stop()
     
-sheet_url = st.text_input("請輸入 Google Sheet 連結")
 
-def fetch(sheet_url):
-    if sheet_url:
-        sheet_id = extract_sheet_id(sheet_url)
-        if sheet_id:
-            client = authenticate_google_sheets()
-            try:
-                sheet = client.open_by_key(sheet_id)
-                worksheet = sheet.sheet1
-                data = worksheet.get_all_records()
+    # * Initialize model
+    LlmManager.gemini_config()
+    model = LlmManager.init_gemini_model(PromptManager.summarize("Traditional Chinese"))
+    
+    for key, contents in st.session_state['pdfs_raw'].items():
+        response = LlmManager.gemini_api_call(model, "\n".join(contents))
+        summary = DataManager.find_json_object(response)
+        SheetManager.insert(sheet_id, [key, summary['summary'], dt.datetime.now().strftime("%I:%M%p on %B %d, %Y"), len(summary['summary'])])
 
-                st.write(data)
-            except:
-                st.write("Connection Failed")
-
-def insert(sheet_url, row: list):
-    if sheet_url:
-        sheet_id = extract_sheet_id(sheet_url)
-        if sheet_id:
-            client = authenticate_google_sheets()
-            try:
-                sheet = client.open_by_key(sheet_id)
-                worksheet = sheet.sheet1
-                worksheet.append_row(row)
-
-                records = worksheet.get_all_records()
-                st.write("Updated successfully:")
-                
-            except Exception as e:
-                st.write(f"Connection Failed: {e}")
-
-insert(sheet_url, ["id", "title", "summary"])
-time.sleep(5)
-fetch(sheet_url)
+selected = st.selectbox("請選擇文件名稱", [key for key, value in st.session_state['pdfs_raw'].items()])
+if st.button("Show"):
+    sheet_id = SheetManager.extract_sheet_id(gs_url)
+    with st.spinner("loading"):
+        data = SheetManager.fetch(sheet_id)
+        res = data.loc[data['檔名'] == selected, '摘要'].tolist()[0]
+        st.markdown(res, unsafe_allow_html = True)
