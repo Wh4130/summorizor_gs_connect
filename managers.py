@@ -6,7 +6,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import dotenv_values
 from pypdf import PdfReader
 import json
+import requests
+import base64
 import google.generativeai as genai
+import hashlib
+import datetime as dt
 
 class LlmManager:
 
@@ -128,6 +132,105 @@ class DataManager:
 
         return None  # Return None if no valid JSON is found
     
+    # --- Transform Picture to Base64
+    @staticmethod
+    def image_to_b64(image_path):
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode("utf-8")
+    
+class UserManager:
+    # * Hash password
+    @staticmethod
+    def ps_hash(password: str):
+        hash_object = hashlib.sha256(password.encode())
+        return hash_object.hexdigest()
+    
+    # * Verify password
+    @staticmethod
+    def ps_verify(attempt: str, ps_hashed: str):
+        return UserManager.ps_hash(attempt) == ps_hashed
+
+
+    @staticmethod
+    @st.dialog("Login")
+    def log_in():
+        user_id = st.text_input("請輸入使用者 ID 或 Email")
+        password = st.text_input("請輸入密碼", type = "password")
+
+        # * 登入
+        if st.button("登入"):
+            # 驗證登入
+            st.session_state['user_infos'] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']))
+            if ((user_id not in st.session_state['user_infos']['_userId'].tolist()) and
+                (user_id not in st.session_state['user_infos']['_email'].tolist())):
+
+                st.warning("使用者ID / Email 不存在")
+                st.stop()
+            if user_id.endswith("@gmail.com"): 
+                ps_hash_cached = st.session_state['user_infos'].loc[st.session_state['user_infos']['_email'] == user_id, "_password"].tolist()[0]
+            else:
+                ps_hash_cached = st.session_state['user_infos'].loc[st.session_state['user_infos']['_userId'] == user_id, "_password"].tolist()[0]
+            
+            if not UserManager.ps_verify(password, ps_hash_cached):
+                st.warning("密碼錯誤，請重試一遍")
+                st.stop()
+
+            # 成功登入
+            st.session_state['logged_in'] = True
+            st.session_state['user_name'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_userId'] == user_id, "_username"].tolist()[0]
+            del ps_hash_cached
+            del st.session_state["user_infos"]
+            st.rerun()
+
+    @staticmethod
+    @st.dialog("Register")
+    def register():
+        username = st.text_input("請輸入使用者名稱")
+        user_id = st.text_input("請輸入使用者ID")
+        email = st.text_input("請輸入Gmail")
+        password_ = st.text_input("請設定密碼", type = "password")
+        password_confirm = st.text_input("再次確認密碼", type = "password")
+        if st.button("送出", key = "Regist"):
+            st.session_state['user_infos'] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']))
+            # * 註冊驗證
+            if not username:
+                st.warning("請輸入使用者名稱")
+                st.stop()
+            if not user_id:
+                st.warning("請輸入使用者ID")
+                st.stop()
+            if user_id in st.session_state['user_infos']['_userId'].tolist():
+                st.warning("使用者ID已被使用，請重新輸入")
+                st.stop()
+            if not email:
+                st.warning("請輸入Gmail")
+                st.stop()
+            if not email.endswith("@gmail.com"):
+                st.warning("請輸入有效Gmail")
+                st.stop()
+            if email in st.session_state['user_infos']['_email'].tolist():
+                st.warning("Gmail已被使用，請重新輸入")
+                st.stop()
+            if not password_:
+                st.warning("請設定密碼")
+                st.stop()
+            if password_ != password_confirm:
+                st.warning("密碼不相符，請重試")
+                st.stop()
+            
+            # * 註冊資料送出
+            SheetManager.insert(
+                sheet_id = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
+                row = [username, user_id, email, UserManager.ps_hash(password_), dt.datetime.now().strftime("%I:%M%p on %B %d, %Y")]
+            )
+            st.success("註冊成功！")
+            time.sleep(3)
+            st.session_state["logged_in"] = True
+            st.session_state['user_name'] = username
+            del st.session_state["user_infos"]
+            st.rerun()
+
+
 
 class PromptManager:
 
@@ -177,3 +280,11 @@ Detailed instructions:
 </body>
 </html>"}}
 """
+    
+class Others:
+
+    @staticmethod
+    def fetch_IP():
+        response = requests.get("https://api.ipify.org?format=json")
+        public_ip = response.json()["ip"]
+        st.caption(f"Deployed IP Address: **:blue[{public_ip}]**")
