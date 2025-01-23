@@ -15,7 +15,7 @@ class LlmManager:
         try:
             genai.configure(api_key = dotenv_values()['GEMINI'])
         except:
-            genai.configure(api_key = st.secrets['credits']['GEMENI_KEY'])
+            genai.configure(api_key = st.secrets['credits']['GEMINI_KEY'])
     
     @staticmethod
     def init_gemini_model(system_prompt, max_output_tokens = 40000, temperature = 0.00):
@@ -39,7 +39,7 @@ class SheetManager:
     @staticmethod
     def authenticate_google_sheets():
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(st.secrets['gsheet-conn'])['credits'], scope)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(st.secrets['gsheet-conn']['credits']), scope)
         client = gspread.authorize(creds)
         return client
     
