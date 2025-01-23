@@ -1,0 +1,8 @@
+gspread
+pandas
+time
+datetime
+oauth2client
+python-dotenv
+pypdf
+google-generativeai
