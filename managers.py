@@ -11,6 +11,8 @@ import base64
 import google.generativeai as genai
 import hashlib
 import datetime as dt
+import random
+import string
 
 class LlmManager:
 
@@ -56,25 +58,25 @@ class SheetManager:
             return None
         
     @staticmethod
-    def fetch(sheet_id):
+    def fetch(sheet_id, worksheet):
         if sheet_id:
             client = SheetManager.authenticate_google_sheets()
             try:
                 sheet = client.open_by_key(sheet_id)
-                worksheet = sheet.sheet1
-                data = worksheet.get_all_records()
+                ws = sheet.worksheet(worksheet)
+                data = ws.get_all_records()
                 
                 return pd.DataFrame(data)
             except:
                 st.write("Connection Failed")
 
     @staticmethod
-    def insert(sheet_id, row: list):
+    def insert(sheet_id, worksheet, row: list):
         if sheet_id:
             client = SheetManager.authenticate_google_sheets()
             try:
                 sheet = client.open_by_key(sheet_id)
-                worksheet = sheet.sheet1
+                worksheet = sheet.worksheet(worksheet)
                 worksheet.freeze(rows = 1)
                 worksheet.append_row(row)
 
@@ -83,18 +85,48 @@ class SheetManager:
             except Exception as e:
                 st.write(f"Connection Failed: {e}")
 
+    @staticmethod
+    def delete_row(sheet_id, worksheet_name, row_idx: int):
+        if not sheet_id:
+            st.write("No sheet_id provided!")
+            return
+
+        try:
+            client = SheetManager.authenticate_google_sheets()
+
+            sheet = client.open_by_key(sheet_id)
+            worksheet = sheet.worksheet(worksheet_name)
+            
+            worksheet.delete_rows(row_idx)
+
+        except Exception as e:
+            st.write(f"Failed to delete row: {e}")
+
+
 class DataManager:
 
     @staticmethod
     @st.dialog("請上傳欲處理的檔案（pdf）")
     def FORM_pdf_input():
         pdf_uploaded = st.file_uploader("**請上傳 pdf 檔案（支援多檔案上傳）**", accept_multiple_files = True)
+        language = st.selectbox("請選擇摘要語言", ["繁體中文", "English", "日本語"])
+        tag = st.selectbox("請選擇文件類別標籤", st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"].tolist())
+        instructions = st.text_area("請輸入額外的摘要指示（Optional）")
         if st.button("確認"):
-            if pdf_uploaded is not None:
+            if language is None:
+                st.warning("請選擇語言")
+                st.stop()
+            if pdf_uploaded:
                 for file in pdf_uploaded:
                     if file.name not in st.session_state["pdfs_raw"].keys():
                         pdf_in_messages = DataManager.load_pdf(file)
                         st.session_state["pdfs_raw"][file.name] = pdf_in_messages
+                st.session_state["lang"] = language
+                st.session_state["other_prompt"] = instructions if instructions else "None"
+                st.session_state["tag"] = tag
+            else:
+                st.warning("請上傳檔案")
+                st.stop()
             st.rerun()
 
     @staticmethod
@@ -138,6 +170,11 @@ class DataManager:
         with open(image_path, "rb") as img_file:
             return base64.b64encode(img_file.read()).decode("utf-8")
     
+    # --- Generate a random index for document
+    def generate_random_index():
+        characters = string.ascii_letters + string.digits  # a-z, A-Z, 0-9
+        return ''.join(random.choices(characters, k = 8))
+    
 class UserManager:
     # * Hash password
     @staticmethod
@@ -160,7 +197,7 @@ class UserManager:
         # * 登入
         if st.button("登入"):
             # 驗證登入
-            st.session_state['user_infos'] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']))
+            st.session_state['user_infos'] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']), "user_info")
             if ((user_id not in st.session_state['user_infos']['_userId'].tolist()) and
                 (user_id not in st.session_state['user_infos']['_email'].tolist())):
 
@@ -177,10 +214,15 @@ class UserManager:
 
             # 成功登入
             st.session_state['logged_in'] = True
+            
             try:
                 st.session_state['user_name'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_userId'] == user_id, "_username"].tolist()[0]
+                st.session_state['user_id'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_userId'] == user_id, "_userId"].tolist()[0]
+
             except:
                 st.session_state['user_name'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_email'] == user_id, "_username"].tolist()[0]
+                st.session_state['user_id'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_email'] == user_id, "_userId"].tolist()[0]
+
             del ps_hash_cached
             del st.session_state["user_infos"]
             st.rerun()
@@ -230,15 +272,14 @@ class UserManager:
             time.sleep(3)
             st.session_state["logged_in"] = True
             st.session_state['user_name'] = username
+            st.session_state['user_id'] = user_id
             del st.session_state["user_infos"]
             st.rerun()
-
-
 
 class PromptManager:
 
     @staticmethod
-    def summarize(lang):
+    def summarize(lang, other_prompt):
         return f"""
 You are a competent research assistant. I would input a pdf essay / report, and I would like you to summarize that file precisely. 
 
@@ -249,6 +290,9 @@ Detailed instructions:
 4. The summary should follow the format that I give you. Give me structrual summary data rather than only description.
 5. Summary should be a valid string format that does not affect the parsing of JSON. However, the content should be a valid HTML format!
 6. Please also recognize and highlight the keywords in your summary, making them bold by <strong> tag.
+
+Other instructions:
+{other_prompt}
 
 <output schema>
 {{"summary": "<!DOCTYPE html>
