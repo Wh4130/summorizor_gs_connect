@@ -109,7 +109,7 @@ class DataManager:
     @st.dialog("請上傳欲處理的檔案（pdf）")
     def FORM_pdf_input():
         pdf_uploaded = st.file_uploader("**請上傳 pdf 檔案（支援多檔案上傳）**", accept_multiple_files = True)
-        language = st.selectbox("請選擇摘要語言", ["繁體中文", "English", "日本語"])
+        language = st.selectbox("請選擇摘要語言", ["Traditional Chinese", "English", "Japanese"])
         tag = st.selectbox("請選擇文件類別標籤", st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"].tolist())
         instructions = st.text_area("請輸入額外的摘要指示（Optional）")
         if st.button("確認"):
@@ -118,9 +118,9 @@ class DataManager:
                 st.stop()
             if pdf_uploaded:
                 for file in pdf_uploaded:
-                    if file.name not in st.session_state["pdfs_raw"].keys():
+                    if file.name not in st.session_state["pdfs_raw"]["filename"]:
                         pdf_in_messages = DataManager.load_pdf(file)
-                        st.session_state["pdfs_raw"][file.name] = pdf_in_messages
+                        st.session_state["pdfs_raw"].loc[len(st.session_state["pdfs_raw"]), ["filename", "content", "tag", "language", "selected", "additional_prompt"]] = [file.name, pdf_in_messages, tag, language, False, instructions]
                 st.session_state["lang"] = language
                 st.session_state["other_prompt"] = instructions if instructions else "None"
                 st.session_state["tag"] = tag
@@ -141,7 +141,7 @@ class DataManager:
             page = reader.pages[i]
             texts.append(f"【page {i}】\n" + page.extract_text())
 
-        return texts
+        return "\n".join(texts)
     
     @staticmethod
     def find_json_object(input_string):
@@ -236,7 +236,7 @@ class UserManager:
         password_ = st.text_input("請設定密碼", type = "password")
         password_confirm = st.text_input("再次確認密碼", type = "password")
         if st.button("送出", key = "Regist"):
-            st.session_state['user_infos'] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']))
+            st.session_state['user_infos'] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']), "user_info")
             # * 註冊驗證
             if not username:
                 st.warning("請輸入使用者名稱")
@@ -264,16 +264,24 @@ class UserManager:
                 st.stop()
             
             # * 註冊資料送出
-            SheetManager.insert(
-                sheet_id = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
-                row = [username, user_id, email, UserManager.ps_hash(password_), dt.datetime.now().strftime("%I:%M%p on %B %d, %Y")]
-            )
+            with st.spinner("註冊中"):
+                SheetManager.insert(
+                    sheet_id = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
+                    worksheet = "user_info",
+                    row = [username, user_id, email, UserManager.ps_hash(password_), dt.datetime.now().strftime("%I:%M%p on %B %d, %Y")]
+                )
+                SheetManager.insert(
+                    sheet_id = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
+                    worksheet = "user_tags",
+                    row = [user_id, "default"]
+                )
             st.success("註冊成功！")
             time.sleep(3)
             st.session_state["logged_in"] = True
             st.session_state['user_name'] = username
             st.session_state['user_id'] = user_id
             del st.session_state["user_infos"]
+            del st.session_state["user_tags"]
             st.rerun()
 
 class PromptManager:
@@ -299,7 +307,7 @@ Other instructions:
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>文件摘要</title>
+  <title>Summary</title>
 </head>
 <body>
 
