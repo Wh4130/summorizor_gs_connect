@@ -15,12 +15,12 @@ with st.sidebar:
                     ''', unsafe_allow_html = True)
     with text_box:
         st.write(" ")
-        st.header("Easy Essay 論文摘要")
+        st.header("Easy Essay 文獻摘要")
 
     # * Pages
-    st.page_link("index.py", label = '論文摘要產生器')
-    st.page_link("./pages/page_docs.py", label = '論文摘要資料庫')
-    st.page_link("./pages/page_chat.py", label = '資料查詢')
+    st.page_link("index.py", label = '文獻摘要產生器')
+    st.page_link("./pages/page_docs.py", label = '文獻摘要資料庫')
+    # st.page_link("./pages/page_chat.py", label = '資料查詢')
         
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
@@ -45,6 +45,7 @@ if "user_docs" not in st.session_state:
 
 if "user_tags" not in st.session_state:
     st.session_state["user_tags"] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']), "user_tags")
+    
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** HTML & CSS
@@ -76,12 +77,9 @@ def main():
     # * 定義主要頁面分頁：摘要產生器 / 標籤管理
     TAB_SUMMARIZE, TAB_TAGS = st.tabs(["摘要產生器", "類別標籤管理"])
 
-    # * 定義資料預覽 CONTAINER
-    BOX_PREVIEW = st.empty()
-
     # *** 摘要產生器 ***
     with TAB_SUMMARIZE:
-        # * 定義頁面按鈕
+        # * 定義頁面區塊
         cl, cr = st.columns(2)
         with cl:
             button_upload = st.button("點擊上傳", key = "upload")
@@ -90,6 +88,9 @@ def main():
         
         if button_upload:
             DataManager.FORM_pdf_input()
+
+        # * 定義資料預覽 CONTAINER
+        BOX_PREVIEW = st.empty()
 
         # * 定義執行條件
         if button_start:
@@ -108,6 +109,7 @@ def main():
             LlmManager.gemini_config()
 
             # TODO 這段，未來會想要前後端分開寫，並用 async
+            BOX_PREVIEW.empty()
             progress_bar = st.progress(0, "(0%)正在處理...")
             for i, row in st.session_state['pdfs_raw'].iterrows():
                 filename = row['filename'].replace(" ", "_")
@@ -136,6 +138,7 @@ def main():
 
     # *** 標籤管理 ***
     with TAB_TAGS:
+        BOX_PREVIEW.empty()
         c1, c2, c3 = st.columns(3)
         with c1:
             tag_to_add = st.text_input("新增類別")
@@ -159,53 +162,55 @@ def main():
                 with st.spinner("刪除中"):
                     SheetManager.delete_row(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
                                             "user_tags",
-                                            st.session_state["user_tags"][(st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]) & (st.session_state["user_tags"]["tags"] == tag_to_delete)].index.tolist()[0] + 2)
+                                            st.session_state["user_tags"][(st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]) & (st.session_state["user_tags"]["tags"] == tag_to_delete)].index.tolist())
                     del st.session_state["user_tags"]
+                    time.sleep(1)
                     st.rerun()
         with c3:
             st.dataframe(st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"], width = 500)
             
     # *** 文獻原始資料預覽 ***
-    st.session_state["pdfs_raw"] = st.data_editor(st.session_state["pdfs_raw"], 
-                   disabled = ["length"], 
-                   column_order = ["selected", "filename", "content", "tag", "language", "additional_prompt"],
-                   column_config = {
-                       "filename": st.column_config.TextColumn(
-                           "檔名",
-                           width = "medium",
-                           max_chars = 200,
-                           validate = r".+\.pdf"
-                       ),
-                       "content": None,
-                       "tag": st.column_config.SelectboxColumn(
-                           "類別標籤", 
-                           help = "該文獻的類別標籤",
-                           width = "small",
-                           options = st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"].tolist(),
-                           required = True
-                       ),
-                       "language": st.column_config.SelectboxColumn(
-                           "摘要語言",
-                           help = "欲生成摘要的語言",
-                           width = "small",
-                           options = ["Traditional Chinese", "English", "Japanese"],
-                           required = True
-                       ),
-                       "selected": st.column_config.CheckboxColumn(
-                           "選取",
-                           help = "選取確認要摘要的檔案"
-                       ),
-                       "additional_prompt": st.column_config.TextColumn(
-                           "額外指示",
-                           help = "關於該文獻的額外指示 (Prompt)",
-                           max_chars = 500
-                       )
-                   },
-                   hide_index = True,
-                   width = 1000)
-    if st.button("刪除所選檔案", key = "delete_pdf"):
-        st.session_state["pdfs_raw"] = st.session_state["pdfs_raw"][st.session_state["pdfs_raw"]["selected"] == False]
-        st.rerun()
+    with BOX_PREVIEW.container():
+        st.session_state["pdfs_raw"] = st.data_editor(st.session_state["pdfs_raw"], 
+                    disabled = ["length"], 
+                    column_order = ["selected", "filename", "content", "tag", "language", "additional_prompt"],
+                    column_config = {
+                        "filename": st.column_config.TextColumn(
+                            "檔名",
+                            width = "medium",
+                            max_chars = 200,
+                            validate = r".+\.pdf"
+                        ),
+                        "content": None,
+                        "tag": st.column_config.SelectboxColumn(
+                            "類別標籤", 
+                            help = "該文獻的類別標籤",
+                            width = "small",
+                            options = st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"].tolist(),
+                            required = True
+                        ),
+                        "language": st.column_config.SelectboxColumn(
+                            "摘要語言",
+                            help = "欲生成摘要的語言",
+                            width = "small",
+                            options = ["Traditional Chinese", "English", "Japanese"],
+                            required = True
+                        ),
+                        "selected": st.column_config.CheckboxColumn(
+                            "選取",
+                            help = "選取確認要摘要的檔案"
+                        ),
+                        "additional_prompt": st.column_config.TextColumn(
+                            "額外指示",
+                            help = "關於該文獻的額外指示 (Prompt)",
+                            max_chars = 500
+                        )
+                    },
+                    hide_index = True,
+                    width = 1000)
+        if st.button("刪除所選檔案", key = "delete_pdf"):
+            st.session_state["pdfs_raw"] = st.session_state["pdfs_raw"][st.session_state["pdfs_raw"]["selected"] == False]
+            st.rerun()
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Authentication

@@ -6,7 +6,7 @@ st.title("デザイン中")
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Sidebar Config
 with st.sidebar:
-
+    
     # * Icon & Title
     text_box, icon_box = st.columns((0.7, 0.3))
     with icon_box:
@@ -15,9 +15,9 @@ with st.sidebar:
                     ''', unsafe_allow_html = True)
     with text_box:
         st.write(" ")
-        st.header("Easy Essay 論文摘要")
+        st.header("Easy Essay 文獻摘要")
 
     # * Pages
-    st.page_link("index.py", label = '論文摘要產生器')
-    st.page_link("./pages/page_docs.py", label = '論文摘要資料庫')
-    st.page_link("./pages/page_chat.py", label = '資料查詢')
+    st.page_link("index.py", label = '文獻摘要產生器')
+    st.page_link("./pages/page_docs.py", label = '文獻摘要資料庫')
+    # st.page_link("./pages/page_chat.py", label = '資料查詢')

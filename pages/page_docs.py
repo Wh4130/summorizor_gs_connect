@@ -4,7 +4,7 @@ from managers import *
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Sidebar Config
 with st.sidebar:
-
+    
     # * Icon & Title
     text_box, icon_box = st.columns((0.7, 0.3))
     with icon_box:
@@ -13,12 +13,12 @@ with st.sidebar:
                     ''', unsafe_allow_html = True)
     with text_box:
         st.write(" ")
-        st.header("Easy Essay 論文摘要")
+        st.header("Easy Essay 文獻摘要")
 
     # * Pages
-    st.page_link("index.py", label = '論文摘要產生器')
-    st.page_link("./pages/page_docs.py", label = '論文摘要資料庫')
-    st.page_link("./pages/page_chat.py", label = '資料查詢')
+    st.page_link("index.py", label = '文獻摘要產生器')
+    st.page_link("./pages/page_docs.py", label = '文獻摘要資料庫')
+    # st.page_link("./pages/page_chat.py", label = '資料查詢')
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Session State Config
@@ -74,21 +74,94 @@ def main():
             st.rerun()
         st.caption(f"Username: **{st.session_state['user_name']}**")
         Others.fetch_IP()
+
+    # * 定義主要頁面分頁：摘要產生器 / 標籤管理
+    TAB_READ, TAB_EDIT = st.tabs(["文獻摘要檢閱", "文獻摘要編輯"])
             
-    # *** 文件摘要顯示 ***
+
+    # *** 文件摘要檢閱 ***
+    with TAB_READ:
+        selected_tag = st.selectbox("請選擇類別標籤", [key.replace(" ", "_") for key in st.session_state['user_tags'][st.session_state['user_tags']['_userId'] == st.session_state["user_id"]]['tags']])
+        XOR1 = st.session_state['user_docs']['_userId'] == st.session_state["user_id"]     # 篩出該 user 之文件
+        XOR2 = st.session_state['user_docs']["_tag"] == selected_tag                       # 篩出該 user 之 tag
+        selected_file = st.selectbox("請選擇文件", [key.replace(" ", "_") for key in st.session_state['user_docs'][XOR1 & XOR2]['_fileName']])
+        
+        with st.spinner("loading"):
+            try:
+                res = st.session_state['user_docs'].loc[st.session_state['user_docs']['_fileName'] == selected_file, '_summary'].tolist()[0]
+                st.markdown(res, unsafe_allow_html = True)
+            except:
+                st.warning("尚無文件或標籤。請至**文獻摘要產生器**產出。")
     
-
-    selected_tag = st.selectbox("請選擇類別標籤", [key.replace(" ", "_") for key in st.session_state['user_tags'][st.session_state['user_tags']['_userId'] == st.session_state["user_id"]]['tags']])
-    selected_file = st.selectbox("請選擇文件", [key.replace(" ", "_") for key in st.session_state['user_docs'][st.session_state['user_docs']["_tag"] == selected_tag]['_fileName']])
+    # *** 文件摘要編輯 ***
+    with TAB_EDIT:
+        XOR = st.session_state['user_docs']['_userId'] == st.session_state["user_id"]     # 篩出該 user 之文件
+        st.session_state['user_docs']["_selected"] = False
+        edit_files = st.data_editor(
+            st.session_state['user_docs'][XOR],
+            disabled = ["_fileId", "_fileName", "_length", "_tag"],
+            column_order = ["_selected", "_fileId", "_fileName", "_tag", "_length"],
+            column_config = {
+                "_fileId": st.column_config.TextColumn(
+                    "檔案id",
+                    width = "medium"
+                ),
+                "_fileName": st.column_config.TextColumn(
+                    "檔案名稱",
+                    width = "medium"
+                ),
+                "_summary": None,
+                "_generatedTime": None,
+                "_userId": None
+            })
     
+        if st.button("刪除所選檔案", key = "delete_summary"):
+            with st.spinner("刪除中"):
+                SheetManager.delete_row(
+                    sheet_id = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
+                    worksheet_name = "user_docs",
+                    row_idxs = edit_files[edit_files["_selected"] == True].index
+                )
+                del st.session_state['user_docs']
+                st.rerun()
 
-    with st.spinner("loading"):
-        try:
-            res = st.session_state['user_docs'].loc[st.session_state['user_docs']['_fileName'] == selected_file, '_summary'].tolist()[0]
-            st.markdown(res, unsafe_allow_html = True)
-        except:
-            st.warning("尚無文件或標籤。請至**文獻摘要產生器**產出。")
-
+        # st.data_editor(st.session_state["pdfs_raw"], 
+        #             disabled = ["length"], 
+        #             column_order = ["selected", "filename", "content", "tag", "language", "additional_prompt"],
+        #             column_config = {
+        #                 "filename": st.column_config.TextColumn(
+        #                     "檔名",
+        #                     width = "medium",
+        #                     max_chars = 200,
+        #                     validate = r".+\.pdf"
+        #                 ),
+        #                 "content": None,
+        #                 "tag": st.column_config.SelectboxColumn(
+        #                     "類別標籤", 
+        #                     help = "該文獻的類別標籤",
+        #                     width = "small",
+        #                     options = st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"].tolist(),
+        #                     required = True
+        #                 ),
+        #                 "language": st.column_config.SelectboxColumn(
+        #                     "摘要語言",
+        #                     help = "欲生成摘要的語言",
+        #                     width = "small",
+        #                     options = ["Traditional Chinese", "English", "Japanese"],
+        #                     required = True
+        #                 ),
+        #                 "selected": st.column_config.CheckboxColumn(
+        #                     "選取",
+        #                     help = "選取確認要摘要的檔案"
+        #                 ),
+        #                 "additional_prompt": st.column_config.TextColumn(
+        #                     "額外指示",
+        #                     help = "關於該文獻的額外指示 (Prompt)",
+        #                     max_chars = 500
+        #                 )
+        #             },
+        #             hide_index = True,
+        #             width = 1000)
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Authentication

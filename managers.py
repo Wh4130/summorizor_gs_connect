@@ -86,21 +86,86 @@ class SheetManager:
                 st.write(f"Connection Failed: {e}")
 
     @staticmethod
-    def delete_row(sheet_id, worksheet_name, row_idx: int):
+    def delete_row(sheet_id, worksheet_name, row_idxs: list):
+        lock_maps = {
+            "user_info": "F1",
+            "user_docs": "H1",
+            "user_tags": "C1"
+        }
+
         if not sheet_id:
             st.write("No sheet_id provided!")
             return
+        
+        while True:
+            try:
+                client = SheetManager.authenticate_google_sheets()
 
-        try:
-            client = SheetManager.authenticate_google_sheets()
+                sheet = client.open_by_key(sheet_id)
+                worksheet = sheet.worksheet(worksheet_name)
 
-            sheet = client.open_by_key(sheet_id)
-            worksheet = sheet.worksheet(worksheet_name)
+                if SheetManager.acquire_lock(worksheet, lock_maps[worksheet_name]):
+                    for idx in row_idxs:
+                        worksheet.delete_rows(idx + 2)
+
+                    SheetManager.release_lock(worksheet, lock_maps[worksheet_name])
+
+                    break
+
+                else:
+                    pass
+
+                
+
+            except Exception as e:
+                st.write(f"Failed to delete row: {e}")
+                break
+
+    @staticmethod
+    def acquire_lock(worksheet, lock_pos: str, timeout = 10):
+        """
+        Acquire a lock before editing.
+        :param worksheet: The gspread worksheet object.
+        :param lock_pos: the position of the cell that stores the lock status
+        :param timeout: Max time (in seconds) to wait for lock.
+        :return: True if lock acquired, False otherwise.
+        """
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            lock_status = worksheet.acell(lock_pos).value
+
+            if lock_status == "Unlocked":
+                # Acquire the lock
+                worksheet.update(lock_pos, st.session_state["user_id"])
+                
+                return True
             
-            worksheet.delete_rows(row_idx)
+            elif lock_status == st.session_state["user_id"]:
+                # Already locked by the same user
+                return True
+            
+            st.write("Waiting for lock...")
+            time.sleep(0.5)
 
-        except Exception as e:
-            st.write(f"Failed to delete row: {e}")
+        return False
+    
+    @staticmethod
+    def release_lock(worksheet, lock_pos):
+        """
+        Release the lock after editing.
+        :param worksheet: The gspread worksheet object.
+        :param user_email: The email of the user trying to release the lock.
+        :return: True if lock released, False otherwise.
+        """
+        lock_status = worksheet.acell(lock_pos).value
+
+        if lock_status == st.session_state["user_id"]:
+            worksheet.update(lock_pos, "Unlocked")
+            return True
+        else:
+            st.write("Lock is not held by you!")
+            return False
 
 
 class DataManager:
@@ -292,12 +357,14 @@ class PromptManager:
 You are a competent research assistant. I would input a pdf essay / report, and I would like you to summarize that file precisely. 
 
 Detailed instructions:
-1. I would like you to output the summary in **{lang}**
-2. The output should be in JSON format
+1. I would like you to output the summary in **{lang}**, please conform with this instruction strictly.
+2. The output should be in JSON format.
 3. Please summarize in details. All paragraphs should be summarized correctly.
 4. The summary should follow the format that I give you. Give me structrual summary data rather than only description.
 5. Summary should be a valid string format that does not affect the parsing of JSON. However, the content should be a valid HTML format!
 6. Please also recognize and highlight the keywords in your summary, making them bold by <strong> tag.
+7. Please also label the source page number by (p. ##) format at the end of all sentences that you consider important.
+8. Use relatively easy-to-understand tone, assume that I'm a high school student.
 
 Other instructions:
 {other_prompt}
