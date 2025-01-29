@@ -3,6 +3,17 @@ import streamlit as st
 import datetime as dt
 import random
 
+st.set_page_config(page_title = "Easy Essay 文獻摘要工具", 
+                   page_icon = ":material/history_edu:", 
+                   layout="centered", 
+                   initial_sidebar_state = "auto", 
+                   menu_items={
+        'Get Help': 'https://www.extremelycoolapp.com/help',
+        'Report a bug': "https://www.extremelycoolapp.com/bug",
+        'About': "# This is a header. This is an *extremely* cool app!"
+    })
+st.session_state["page_config"] = True
+
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Sidebar Config
 with st.sidebar:
