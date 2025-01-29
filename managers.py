@@ -373,11 +373,15 @@ class UserManager:
                     worksheet = "user_info",
                     row = [username, user_id, email, UserManager.ps_hash(password_), dt.datetime.now().strftime("%I:%M%p on %B %d, %Y")]
                 )
-                SheetManager.insert(
-                    sheet_id = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
-                    worksheet = "user_tags",
-                    row = [user_id, "default"]
-                )
+                while True:
+                    default_tag_id = DataManager.generate_random_index()
+                    if default_tag_id not in st.session_state['user_tags']['_tag'].tolist():
+                        SheetManager.insert(
+                            sheet_id = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
+                            worksheet = "user_tags",
+                            row = [default_tag_id, user_id, "default"]
+                        )
+                        break
             st.success("註冊成功！")
             time.sleep(3)
             st.session_state["logged_in"] = True
