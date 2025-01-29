@@ -276,7 +276,9 @@ def main():
         
         # ** 刪除類別 **
         with c2:
-            tags_to_delete = st.multiselect("刪除類別", st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["_tag"].tolist())
+            available_tags = st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["_tag"].tolist()
+            available_tags.remove("default")
+            tags_to_delete = st.multiselect("刪除類別", available_tags)
             if st.button("刪除"):
                 if not tags_to_delete:
                     st.warning("請選擇欲刪除的類別")
@@ -303,11 +305,27 @@ def main():
                                             (st.session_state["user_tags"]["_tag"].isin(tags_to_delete))
                                         ].index
                                 )
+                    # * Update the tag for all files of the deleted tag to "default"
+                    SheetManager.update(
+                        sheet_id = st.session_state["sheet_id"],
+                        worksheet_name = "user_docs",
+                        row_idxs = st.session_state["user_docs"][
+                                    (st.session_state["user_docs"]["_userId"] == st.session_state["user_id"]) &
+                                    (st.session_state["user_docs"]["_tag"].isin(tags_to_delete))
+                                ].index,
+                        column = "_tag",
+                        values = ["default" for _ in st.session_state["user_docs"][
+                                    (st.session_state["user_docs"]["_userId"] == st.session_state["user_id"]) &
+                                    (st.session_state["user_docs"]["_tag"].isin(tags_to_delete))
+                                ].index]
+                        
+                    )
                     
                     # * Release the lock
                     SheetManager.release_lock(st.session_state["sheet_id"], "user_tags")
 
                     del st.session_state["user_tags"]
+                    del st.session_state["user_docs"]
                     time.sleep(1)
                     st.rerun()
 
