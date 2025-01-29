@@ -99,13 +99,14 @@ def main():
             except:
                 st.warning("該分類下**尚無文獻摘要**資料。請至**文獻摘要產生器**產出。")
     
-    # *** 文獻摘要一覽 ***
+    # *** 文獻摘要一覽 & 編輯 ***
     with TAB_EDIT:
         XOR = st.session_state['user_docs']['_userId'] == st.session_state["user_id"]     # 篩出該 user 之文件
         st.session_state['user_docs']["_selected"] = False
+        st.session_state['user_docs']['_tagModified'] = False    # * add a column to check whether '_tag' column is modified
         edit_files = st.data_editor(
             st.session_state['user_docs'][XOR],
-            disabled = ["_fileId", "_fileName", "_length", "_tag"],
+            disabled = ["_fileId", "_fileName", "_length"],
             column_order = ["_selected", "_fileId", "_fileName", "_tag", "_length"],
             width = 1000,
             hide_index = True,
@@ -129,43 +130,83 @@ def main():
                     format="%f",
                     max_value = 5000
                 ),
-                "_tag": st.column_config.TextColumn(
-                    "文獻類別"
+                "_tag": st.column_config.SelectboxColumn(
+                    "文獻類別",
+                    help = "該文件的類別（可編輯）",
+                    options = st.session_state['user_tags'][st.session_state['user_tags']['_userId'] == st.session_state['user_id']]['_tag'].tolist(),
+                    required = True
                 ),
                 "_summary": None,
                 "_generatedTime": None,
                 "_userId": None
             })
 
+        c_del, c_update = st.columns(2)
         # ** 檔案刪除區 **
         # * First check if there's any file to be deleted
-        if st.button("從資料庫中刪除所選檔案", key = "delete_summary"):
-            if len(edit_files[edit_files['_selected'] == True]) == 0:
-                st.warning("請選擇欲刪除的文獻摘要")
-                time.sleep(1)
-                st.rerun()
-            
-            with st.spinner("刪除中..."):
-
-                # * Acqcuire lock for the user first, before deletion
-                SheetManager.acquire_lock(st.session_state["sheet_id"], "user_docs")
+        with c_del:
+            if st.button("從資料庫中刪除所選檔案", key = "delete_summary"):
+                if len(edit_files[edit_files['_selected'] == True]) == 0:
+                    st.warning("請選擇欲刪除的文獻摘要")
+                    time.sleep(1)
+                    st.rerun()
                 
-                # * Reload the user_docs data before deletion, after lock
-                st.session_state["user_docs"] = SheetManager.fetch(st.session_state["sheet_id"], "user_docs")
+                with st.spinner("刪除中..."):
 
-                # * Delete the file in the selected
-                SheetManager.delete_row(
-                    sheet_id = st.session_state["sheet_id"],
-                    worksheet_name = "user_docs",
-                    row_idxs = st.session_state["user_docs"][[ True if id in edit_files[edit_files['_selected']]['_fileId'].tolist() else False for id in st.session_state["user_docs"]["_fileId"]]].index
-                )
-                st.success("Deleted")
+                    # * Acqcuire lock for the user first, before deletion
+                    SheetManager.acquire_lock(st.session_state["sheet_id"], "user_docs")
+                    
+                    # * Reload the user_docs data before deletion, after lock
+                    st.session_state["user_docs"] = SheetManager.fetch(st.session_state["sheet_id"], "user_docs")
 
-                # * Release the lock
-                SheetManager.release_lock(st.session_state["sheet_id"], "user_docs")
+                    # * Delete the file in the selected
+                    SheetManager.delete_row(
+                        sheet_id = st.session_state["sheet_id"],
+                        worksheet_name = "user_docs",
+                        row_idxs = st.session_state["user_docs"][[ True if id in edit_files[edit_files['_selected']]['_fileId'].tolist() else False for id in st.session_state["user_docs"]["_fileId"]]].index
+                    )
+
+                    # * Release the lock
+                    SheetManager.release_lock(st.session_state["sheet_id"], "user_docs")
 
                 # * Reset session state
+                st.success("Deleted")
+                time.sleep(1)
                 del st.session_state['user_docs']
+                st.rerun()
+
+        # ** 更新文件類別 **
+        with c_update:
+            edit_files['_modified'] = st.session_state['user_docs']['_tag'] != edit_files['_tag']
+                # id: new tag
+            update_dict = {row["_fileId"]: row["_tag"] for _, row in edit_files.iterrows() if row['_modified']} 
+            if st.button("儲存文件類別變更"):
+                if update_dict == {}:
+                    st.warning("無待儲存的變更")
+                    time.sleep(1.5)
+                    st.rerun()
+                with st.spinner("更新中..."):
+                    # * Acqcuire lock for the user first, before deletion
+                    SheetManager.acquire_lock(st.session_state["sheet_id"], "user_docs")
+                    
+                    # * Reload the user_docs data before deletion, after lock
+                    st.session_state["user_docs"] = SheetManager.fetch(st.session_state["sheet_id"], "user_docs")
+
+                    # * Update
+                    SheetManager.update(st.session_state["sheet_id"],
+                                        "user_docs",
+                                        st.session_state["user_docs"][st.session_state["user_docs"]['_fileId'].isin(update_dict.keys())].index,
+                                        "_tag",
+                                        [update_dict[i] for i in st.session_state["user_docs"][st.session_state["user_docs"]['_fileId'].isin(update_dict.keys())]['_fileId'].tolist()]
+                                        )
+                
+                    # * Release the lock
+                    SheetManager.release_lock(st.session_state["sheet_id"], "user_docs")
+
+                # * Reset session state
+                st.success("更新成功！")
+                del st.session_state['user_docs']
+                time.sleep(1.5)
                 st.rerun()
 
     # *** 類別標籤管理 ***

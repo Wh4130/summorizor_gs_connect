@@ -86,6 +86,36 @@ class SheetManager:
                 st.write(f"Connection Failed: {e}")
 
     @staticmethod
+    def update(sheet_id, worksheet_name, row_idxs, column, values):
+        mapping = {
+            "user_docs": {
+                "_fileId": "A",
+                "_fileName": "B",
+                "_summary": "C",
+                "_generatedTime": "D",
+                "_length": "E",
+                "_userId": "F",
+                "_tag": "G"
+            },
+            "user_tags": {
+                "_tagId": "A",
+                "_userId": "B",
+                "_tag": "C"
+            }
+        }
+        if sheet_id:
+            client = SheetManager.authenticate_google_sheets()
+            for idx, value in zip(row_idxs, values):
+                try:
+                    sheet = client.open_by_key(sheet_id)
+                    worksheet = sheet.worksheet(worksheet_name)
+                    pos = f"{mapping[worksheet_name][column]}{idx + 2}"
+                    worksheet.update(pos, value)
+                    
+                except Exception as e:
+                    st.write(f"Connection Failed: {e}")
+
+    @staticmethod
     def delete_row(sheet_id, worksheet_name, row_idxs: list):
 
         if not sheet_id:
