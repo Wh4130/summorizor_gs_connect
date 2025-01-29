@@ -5,7 +5,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import dotenv_values
 from pypdf import PdfReader
-from openai import OpenAI
 import json
 import requests
 import base64
