@@ -207,9 +207,11 @@ def main():
 
         # ** 更新文獻類別按鈕 **
         with c_update:
-            edit_files['_modified'] = st.session_state['user_docs']['_tag'] != edit_files['_tag']
+            update_dict == {}
+            if not st.session_state['user_docs'].empty:
+                edit_files['_modified'] = st.session_state['user_docs']['_tag'] != edit_files['_tag']
                 # id: new tag
-            update_dict = {row["_fileId"]: row["_tag"] for _, row in edit_files.iterrows() if row['_modified']} 
+                update_dict = {row["_fileId"]: row["_tag"] for _, row in edit_files.iterrows() if row['_modified']} 
             if st.button("儲存文獻類別變更"):
                 if update_dict == {}:
                     st.warning("無待儲存的變更")
