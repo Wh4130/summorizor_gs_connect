@@ -5,6 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import dotenv_values
 from pypdf import PdfReader
+from openai import OpenAI
 import json
 import requests
 import base64
@@ -39,6 +40,7 @@ class LlmManager:
         response = model.generate_content(in_message)
 
         return response.text
+
 
 class SheetManager:
 
@@ -213,7 +215,7 @@ class DataManager:
         pdf_uploaded = st.file_uploader("**請上傳 pdf 檔案（支援多檔案上傳）**", accept_multiple_files = True)
         language = st.selectbox("請選擇摘要語言", ["Traditional Chinese", "English", "Japanese"])
         tag = st.selectbox("請選擇文件類別標籤", st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["_tag"].tolist())
-        instructions = st.text_area("請輸入額外的摘要指示（Optional）")
+        instructions = st.text_area("請輸入額外的摘要提示（Optional）")
         if st.button("確認"):
             if language is None:
                 st.warning("請選擇語言")
@@ -439,6 +441,13 @@ Other instructions:
 </body>
 </html>"}}
 """
+    
+    @staticmethod
+    def others():
+        return {
+            "淺顯易懂的摘要": "**Please make sure that your tone is easily understandable! I'm not that smart.**",
+            "著重解釋研究方法": "**Please put more emphasis on the 'research methodology', specifying the detail of hypotheses, merits, and limitation of that methodology. Also remember to plug in the equation if any.**"
+        }
     
 class Others:
 

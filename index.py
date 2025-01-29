@@ -21,6 +21,8 @@ with st.sidebar:
     st.page_link("index.py", label = '文獻摘要產生器')
     st.page_link("./pages/page_docs.py", label = '文獻摘要資料庫')
     # st.page_link("./pages/page_chat.py", label = '資料查詢')
+
+    Others.fetch_IP()
         
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
@@ -51,15 +53,16 @@ if "user_tags" not in st.session_state:
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** HTML & CSS
-st.markdown("""<style>
+st.html("""<style>
 div.stButton > button {
     width: 100%;  /* 設置按鈕寬度為頁面寬度的 60% */
     height: 50px;
     margin-left: 0;
     margin-right: auto;
-}
-</style>
-""", unsafe_allow_html=True)
+}</style>
+""")
+
+
 
 
 
@@ -70,17 +73,21 @@ def main():
     
     # * 登入後顯示使用者名稱與登出按鈕
     with st.sidebar:
+        if st.button("重新整理", "reload"):
+            del st.session_state["pdfs_raw"]
+            st.rerun()
+            
         if st.button("登出", "logout"):
             st.session_state['logged_in'] = False
             st.success("登出成功")
             time.sleep(2)
             st.rerun()
         st.caption(f"Username: **{st.session_state['user_name']}**")
-        Others.fetch_IP()
+        # Others.fetch_IP()
     
     # * 定義主要頁面分頁：摘要產生器 / 提示模板
     # TODO  新增提示模板頁面
-    TAB_SUMMARIZE = st.tabs(["摘要產生器"])[0]
+    TAB_SUMMARIZE, TAB_PROMPT_TEMP = st.tabs(["摘要產生器", "提示模板"])
 
     # *** 摘要產生器 ***
     with TAB_SUMMARIZE:
@@ -156,6 +163,10 @@ def main():
             del to_update
             st.rerun()
 
+    # *** 提示模板 ***
+    with TAB_PROMPT_TEMP:
+        p = st.selectbox("請選擇提示類別", PromptManager.others().keys(), help = "可以將想要使用的提示模板複製貼上至『摘要產生器』頁面中的:blue[『額外提示 prompt』]欄位。")
+        st.code(PromptManager.others()[p], language = None, wrap_lines = True)
             
     # *** 文獻原始資料預覽 ***
     with BOX_PREVIEW.container():
@@ -189,8 +200,8 @@ def main():
                             help = "選取確認要摘要的檔案"
                         ),
                         "additional_prompt": st.column_config.TextColumn(
-                            "額外指示",
-                            help = "關於該文獻的額外指示 (Prompt)",
+                            "額外提示 Prompt",
+                            help = "請 LLM 摘要的額外提示（非必填）。\n可以自行輸入，或到『提示模板』頁面找靈感。",
                             max_chars = 500
                         )
                     },

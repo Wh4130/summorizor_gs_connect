@@ -9,6 +9,8 @@ for i in range(5):
     ind = DataManager.generate_random_index()
     print(ind)
 
+LlmManager.TEST()
+
 # def generate_random_index():
 #     # Generate a random alphanumeric string
 #     characters = string.ascii_letters + string.digits  # a-z, A-Z, 0-9

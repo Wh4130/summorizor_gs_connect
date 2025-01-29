@@ -20,6 +20,8 @@ with st.sidebar:
     st.page_link("./pages/page_docs.py", label = '文獻摘要資料庫')
     # st.page_link("./pages/page_chat.py", label = '資料查詢')
 
+    Others.fetch_IP()
+
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Session State Config
 if "pdfs_raw" not in st.session_state:
@@ -49,7 +51,7 @@ if "user_tags" not in st.session_state:
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** HTML & CSS
-st.markdown("""<style>
+st.html("""<style>
 div.stButton > button {
     width: 100%;  /* 設置按鈕寬度為頁面寬度的 60% */
     height: 50px;
@@ -57,7 +59,7 @@ div.stButton > button {
     margin-right: auto;
 }
 </style>
-""", unsafe_allow_html=True)
+""")
 
 
 
@@ -79,7 +81,6 @@ def main():
             time.sleep(2)
             st.rerun()
         st.caption(f"Username: **{st.session_state['user_name']}**")
-        Others.fetch_IP()
 
     # * 定義主要頁面分頁：摘要產生器 / 標籤管理
     TAB_READ, TAB_EDIT, TAB_TAGS = st.tabs(["文獻摘要檢閱", "文獻摘要一覽", "類別標籤管理"])
@@ -95,7 +96,7 @@ def main():
         with st.spinner("loading"):
             try:
                 res = st.session_state['user_docs'].loc[st.session_state['user_docs']['_fileName'] == selected_file, '_summary'].tolist()[0]
-                st.markdown(res, unsafe_allow_html = True)
+                st.markdown(res, unsafe_allow_html = True, help = "hah")
             except:
                 st.warning("該分類下**尚無文獻摘要**資料。請至**文獻摘要產生器**產出。")
     
@@ -142,15 +143,31 @@ def main():
             })
 
         c_del, c_update = st.columns(2)
-        # ** 檔案刪除區 **
+
+        # ** 檔案刪除按鈕 **
         # * First check if there's any file to be deleted
         with c_del:
+            @st.dialog("確認刪除？")
+            def FORM_delete():
+                st.info("此動作無法復原")
+                l, r = st.columns(2)
+                with l:
+                    if st.button("確認"):
+                        st.session_state['delete'] = True
+                        st.rerun()
+                with r:
+                    if st.button("取消"):
+                        st.rerun()
+
             if st.button("從資料庫中刪除所選檔案", key = "delete_summary"):
                 if len(edit_files[edit_files['_selected'] == True]) == 0:
                     st.warning("請選擇欲刪除的文獻摘要")
                     time.sleep(1)
                     st.rerun()
-                
+                # * 確認刪除表單
+                FORM_delete()
+
+            if "delete" in st.session_state:
                 with st.spinner("刪除中..."):
 
                     # * Acqcuire lock for the user first, before deletion
@@ -173,14 +190,15 @@ def main():
                 st.success("Deleted")
                 time.sleep(1)
                 del st.session_state['user_docs']
+                del st.session_state["delete"]
                 st.rerun()
 
-        # ** 更新文件類別 **
+        # ** 更新文獻類別按鈕 **
         with c_update:
             edit_files['_modified'] = st.session_state['user_docs']['_tag'] != edit_files['_tag']
                 # id: new tag
             update_dict = {row["_fileId"]: row["_tag"] for _, row in edit_files.iterrows() if row['_modified']} 
-            if st.button("儲存文件類別變更"):
+            if st.button("儲存文獻類別變更"):
                 if update_dict == {}:
                     st.warning("無待儲存的變更")
                     time.sleep(1.5)
