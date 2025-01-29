@@ -167,7 +167,7 @@ class SheetManager:
 
                 if lock_status == "Unlocked":
                     # Acquire the lock
-                    worksheet.update(lock_maps[worksheet_name], st.session_state["user_id"])
+                    worksheet.update(range_name = lock_maps[worksheet_name], values = st.session_state["user_id"])
                     
                     return True
                 
