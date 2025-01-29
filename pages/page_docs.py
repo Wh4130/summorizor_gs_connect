@@ -208,7 +208,7 @@ def main():
         # ** 更新文獻類別按鈕 **
         with c_update:
             update_dict = {}
-            if not st.session_state['user_docs'].empty:
+            if not len(edit_files) == 0:
                 edit_files['_modified'] = st.session_state['user_docs']['_tag'] != edit_files['_tag']
                 # id: new tag
                 update_dict = {row["_fileId"]: row["_tag"] for _, row in edit_files.iterrows() if row['_modified']} 
