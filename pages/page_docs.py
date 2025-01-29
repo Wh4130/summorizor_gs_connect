@@ -37,7 +37,7 @@ with st.sidebar:
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Session State Config
 if "pdfs_raw" not in st.session_state:
-    st.session_state["pdfs_raw"] = {}
+    st.session_state["pdfs_raw"] = pd.DataFrame(columns = ["filename", "content", "tag", "language", "selected", "additional_prompt"])
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
