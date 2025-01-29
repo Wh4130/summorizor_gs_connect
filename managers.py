@@ -87,11 +87,6 @@ class SheetManager:
 
     @staticmethod
     def delete_row(sheet_id, worksheet_name, row_idxs: list):
-        lock_maps = {
-            "user_info": "F1",
-            "user_docs": "H1",
-            "user_tags": "C1"
-        }
 
         if not sheet_id:
             st.write("No sheet_id provided!")
@@ -104,25 +99,26 @@ class SheetManager:
                 sheet = client.open_by_key(sheet_id)
                 worksheet = sheet.worksheet(worksheet_name)
 
-                if SheetManager.acquire_lock(worksheet, lock_maps[worksheet_name]):
-                    for idx in row_idxs:
+                if SheetManager.acquire_lock(sheet_id, worksheet_name):
+                    for idx in sorted(row_idxs, reverse = True):
                         worksheet.delete_rows(idx + 2)
-
-                    SheetManager.release_lock(worksheet, lock_maps[worksheet_name])
-
                     break
-
                 else:
                     pass
 
-                
 
             except Exception as e:
                 st.write(f"Failed to delete row: {e}")
                 break
 
     @staticmethod
-    def acquire_lock(worksheet, lock_pos: str, timeout = 10):
+    def acquire_lock(sheet_id, worksheet_name, timeout = 10):
+        lock_maps = {
+            "user_info": "F1",
+            "user_docs": "H1",
+            "user_tags": "D1"
+        }
+
         """
         Acquire a lock before editing.
         :param worksheet: The gspread worksheet object.
@@ -131,37 +127,48 @@ class SheetManager:
         :return: True if lock acquired, False otherwise.
         """
         start_time = time.time()
+        client = SheetManager.authenticate_google_sheets()
+        sheet = client.open_by_key(sheet_id)
+        worksheet = sheet.worksheet(worksheet_name)
+        with st.spinner("Waiting for lock..."):
+            while time.time() - start_time < timeout:
+                lock_status = worksheet.acell(lock_maps[worksheet_name]).value
 
-        while time.time() - start_time < timeout:
-            lock_status = worksheet.acell(lock_pos).value
-
-            if lock_status == "Unlocked":
-                # Acquire the lock
-                worksheet.update(lock_pos, st.session_state["user_id"])
+                if lock_status == "Unlocked":
+                    # Acquire the lock
+                    worksheet.update(lock_maps[worksheet_name], st.session_state["user_id"])
+                    
+                    return True
                 
-                return True
-            
-            elif lock_status == st.session_state["user_id"]:
-                # Already locked by the same user
-                return True
-            
-            st.write("Waiting for lock...")
-            time.sleep(0.5)
+                elif lock_status == st.session_state["user_id"]:
+                    # Already locked by the same user
+                    return True
+                
+                time.sleep(0.5)
 
         return False
     
     @staticmethod
-    def release_lock(worksheet, lock_pos):
+    def release_lock(sheet_id, worksheet_name):
         """
         Release the lock after editing.
         :param worksheet: The gspread worksheet object.
         :param user_email: The email of the user trying to release the lock.
         :return: True if lock released, False otherwise.
         """
-        lock_status = worksheet.acell(lock_pos).value
+        lock_maps = {
+            "user_info": "F1",
+            "user_docs": "H1",
+            "user_tags": "D1"
+        }
+
+        client = SheetManager.authenticate_google_sheets()
+        sheet = client.open_by_key(sheet_id)
+        worksheet = sheet.worksheet(worksheet_name)
+        lock_status = worksheet.acell(lock_maps[worksheet_name]).value
 
         if lock_status == st.session_state["user_id"]:
-            worksheet.update(lock_pos, "Unlocked")
+            worksheet.update(lock_maps[worksheet_name], "Unlocked")
             return True
         else:
             st.write("Lock is not held by you!")
@@ -175,7 +182,7 @@ class DataManager:
     def FORM_pdf_input():
         pdf_uploaded = st.file_uploader("**請上傳 pdf 檔案（支援多檔案上傳）**", accept_multiple_files = True)
         language = st.selectbox("請選擇摘要語言", ["Traditional Chinese", "English", "Japanese"])
-        tag = st.selectbox("請選擇文件類別標籤", st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"].tolist())
+        tag = st.selectbox("請選擇文件類別標籤", st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["_tag"].tolist())
         instructions = st.text_area("請輸入額外的摘要指示（Optional）")
         if st.button("確認"):
             if language is None:

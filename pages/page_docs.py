@@ -37,11 +37,15 @@ if "user_name" not in st.session_state:
 if "user_id" not in st.session_state:
     st.session_state["user_id"] = ""
 
+if "sheet_id" not in st.session_state:
+    st.session_state["sheet_id"] = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user'])
+
 if "user_docs" not in st.session_state:
-    st.session_state['user_docs'] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']), "user_docs")
+    st.session_state['user_docs'] = SheetManager.fetch(st.session_state["sheet_id"], "user_docs")
 
 if "user_tags" not in st.session_state:
-    st.session_state["user_tags"] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']), "user_tags")
+    st.session_state["user_tags"] = SheetManager.fetch(st.session_state["sheet_id"], "user_tags")
+
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** HTML & CSS
@@ -60,7 +64,7 @@ div.stButton > button {
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Main
 def main():
-    st.title("文獻摘要製作")
+    st.title("摘要資料庫")
     
     # * 登入後顯示使用者名稱與登出按鈕
     with st.sidebar:
@@ -71,17 +75,19 @@ def main():
             
         if st.button("登出", "logout"):
             st.session_state['logged_in'] = False
+            st.success("登出成功")
+            time.sleep(2)
             st.rerun()
         st.caption(f"Username: **{st.session_state['user_name']}**")
         Others.fetch_IP()
 
     # * 定義主要頁面分頁：摘要產生器 / 標籤管理
-    TAB_READ, TAB_EDIT = st.tabs(["文獻摘要檢閱", "文獻摘要編輯"])
+    TAB_READ, TAB_EDIT, TAB_TAGS = st.tabs(["文獻摘要檢閱", "文獻摘要一覽", "類別標籤管理"])
             
 
     # *** 文件摘要檢閱 ***
     with TAB_READ:
-        selected_tag = st.selectbox("請選擇類別標籤", [key.replace(" ", "_") for key in st.session_state['user_tags'][st.session_state['user_tags']['_userId'] == st.session_state["user_id"]]['tags']])
+        selected_tag = st.selectbox("請選擇類別標籤", [key.replace(" ", "_") for key in st.session_state['user_tags'][st.session_state['user_tags']['_userId'] == st.session_state["user_id"]]['_tag']])
         XOR1 = st.session_state['user_docs']['_userId'] == st.session_state["user_id"]     # 篩出該 user 之文件
         XOR2 = st.session_state['user_docs']["_tag"] == selected_tag                       # 篩出該 user 之 tag
         selected_file = st.selectbox("請選擇文件", [key.replace(" ", "_") for key in st.session_state['user_docs'][XOR1 & XOR2]['_fileName']])
@@ -91,9 +97,9 @@ def main():
                 res = st.session_state['user_docs'].loc[st.session_state['user_docs']['_fileName'] == selected_file, '_summary'].tolist()[0]
                 st.markdown(res, unsafe_allow_html = True)
             except:
-                st.warning("尚無文件或標籤。請至**文獻摘要產生器**產出。")
+                st.warning("該分類下**尚無文獻摘要**資料。請至**文獻摘要產生器**產出。")
     
-    # *** 文件摘要編輯 ***
+    # *** 文獻摘要一覽 ***
     with TAB_EDIT:
         XOR = st.session_state['user_docs']['_userId'] == st.session_state["user_id"]     # 篩出該 user 之文件
         st.session_state['user_docs']["_selected"] = False
@@ -101,67 +107,158 @@ def main():
             st.session_state['user_docs'][XOR],
             disabled = ["_fileId", "_fileName", "_length", "_tag"],
             column_order = ["_selected", "_fileId", "_fileName", "_tag", "_length"],
+            width = 1000,
+            hide_index = True,
             column_config = {
+                "_selected": st.column_config.CheckboxColumn(
+                    "選取",
+                    width = "small"
+                ),
                 "_fileId": st.column_config.TextColumn(
                     "檔案id",
-                    width = "medium"
+                    width = "small"
                 ),
                 "_fileName": st.column_config.TextColumn(
                     "檔案名稱",
                     width = "medium"
                 ),
+                "_length": st.column_config.ProgressColumn(
+                    "摘要長度",
+                    width = "small",
+                    min_value = 0,
+                    format="%f",
+                    max_value = 5000
+                ),
+                "_tag": st.column_config.TextColumn(
+                    "文獻類別"
+                ),
                 "_summary": None,
                 "_generatedTime": None,
                 "_userId": None
             })
-    
-        if st.button("刪除所選檔案", key = "delete_summary"):
-            with st.spinner("刪除中"):
+
+        # ** 檔案刪除區 **
+        # * First check if there's any file to be deleted
+        if st.button("從資料庫中刪除所選檔案", key = "delete_summary"):
+            if len(edit_files[edit_files['_selected'] == True]) == 0:
+                st.warning("請選擇欲刪除的文獻摘要")
+                time.sleep(1)
+                st.rerun()
+            
+            with st.spinner("刪除中..."):
+
+                # * Acqcuire lock for the user first, before deletion
+                SheetManager.acquire_lock(st.session_state["sheet_id"], "user_docs")
+                
+                # * Reload the user_docs data before deletion, after lock
+                st.session_state["user_docs"] = SheetManager.fetch(st.session_state["sheet_id"], "user_docs")
+
+                # * Delete the file in the selected
                 SheetManager.delete_row(
-                    sheet_id = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
+                    sheet_id = st.session_state["sheet_id"],
                     worksheet_name = "user_docs",
-                    row_idxs = edit_files[edit_files["_selected"] == True].index
+                    row_idxs = st.session_state["user_docs"][[ True if id in edit_files[edit_files['_selected']]['_fileId'].tolist() else False for id in st.session_state["user_docs"]["_fileId"]]].index
                 )
+                st.success("Deleted")
+
+                # * Release the lock
+                SheetManager.release_lock(st.session_state["sheet_id"], "user_docs")
+
+                # * Reset session state
                 del st.session_state['user_docs']
                 st.rerun()
 
-        # st.data_editor(st.session_state["pdfs_raw"], 
-        #             disabled = ["length"], 
-        #             column_order = ["selected", "filename", "content", "tag", "language", "additional_prompt"],
-        #             column_config = {
-        #                 "filename": st.column_config.TextColumn(
-        #                     "檔名",
-        #                     width = "medium",
-        #                     max_chars = 200,
-        #                     validate = r".+\.pdf"
-        #                 ),
-        #                 "content": None,
-        #                 "tag": st.column_config.SelectboxColumn(
-        #                     "類別標籤", 
-        #                     help = "該文獻的類別標籤",
-        #                     width = "small",
-        #                     options = st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"].tolist(),
-        #                     required = True
-        #                 ),
-        #                 "language": st.column_config.SelectboxColumn(
-        #                     "摘要語言",
-        #                     help = "欲生成摘要的語言",
-        #                     width = "small",
-        #                     options = ["Traditional Chinese", "English", "Japanese"],
-        #                     required = True
-        #                 ),
-        #                 "selected": st.column_config.CheckboxColumn(
-        #                     "選取",
-        #                     help = "選取確認要摘要的檔案"
-        #                 ),
-        #                 "additional_prompt": st.column_config.TextColumn(
-        #                     "額外指示",
-        #                     help = "關於該文獻的額外指示 (Prompt)",
-        #                     max_chars = 500
-        #                 )
-        #             },
-        #             hide_index = True,
-        #             width = 1000)
+    # *** 類別標籤管理 ***
+    with TAB_TAGS:
+        c1, c2, c3 = st.columns(3)
+
+        # ** 新增類別 **
+        with c1:
+            tag_to_add = st.text_input("新增類別", key = "add_tag")
+
+            if st.button("新增"):
+                if tag_to_add:
+                    if tag_to_add in st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["_tag"].tolist():
+                        st.warning("該類別已存在")
+                    else:
+                        with st.spinner("新增中"):
+                            # * acquire lock
+                            if SheetManager.acquire_lock(st.session_state['sheet_id'], "user_tags") == False:
+                                st.warning("請重新嘗試")
+                                time.sleep(1.5)
+                                st.rerun()
+                            
+                            # * conduct insertion
+                            SheetManager.insert(
+                                st.session_state['sheet_id'], 
+                                "user_tags", 
+                                [DataManager.generate_random_index(), st.session_state['user_id'], tag_to_add])
+                            
+                            # * release lock
+                            SheetManager.release_lock(st.session_state['sheet_id'], "user_tags")
+                            del st.session_state["user_tags"]
+                            st.rerun()
+                else:
+                    st.warning("請輸入欲新增的類別")
+        
+        # ** 刪除類別 **
+        with c2:
+            tags_to_delete = st.multiselect("刪除類別", st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["_tag"].tolist())
+            if st.button("刪除"):
+                if not tags_to_delete:
+                    st.warning("請選擇欲刪除的類別")
+                    time.sleep(1)
+                    st.rerun()
+                
+                with st.spinner("刪除中"):
+
+                    # * Acqcuire lock for the user first, before deletion
+                    if SheetManager.acquire_lock(st.session_state["sheet_id"], "user_tags") == False:
+                        st.warning("請重新嘗試")
+                        time.sleep(1)
+                        st.rerun()
+
+                    # * Reload tag data after acquireing lock, before deletion
+                    st.session_state["user_tags"] = SheetManager.fetch(st.session_state["sheet_id"], "user_tags")
+
+                    # * Delete the selected tags
+                    SheetManager.delete_row(
+                                sheet_id = st.session_state["sheet_id"],
+                                worksheet_name = "user_tags",
+                                row_idxs = st.session_state["user_tags"][
+                                            (st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]) &
+                                            (st.session_state["user_tags"]["_tag"].isin(tags_to_delete))
+                                        ].index
+                                )
+                    
+                    # * Release the lock
+                    SheetManager.release_lock(st.session_state["sheet_id"], "user_tags")
+
+                    del st.session_state["user_tags"]
+                    time.sleep(1)
+                    st.rerun()
+
+        # ** 顯示使用者的類別 **
+        with c3:
+            user_tags = st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["_tag"]
+            user_docs = st.session_state["user_docs"][st.session_state["user_docs"]["_userId"] == st.session_state["user_id"]]
+            user_docs_grouped = pd.merge(user_tags, user_docs, how = "left", on = '_tag').groupby("_tag").agg({"_fileName": "count"})
+            st.data_editor(user_docs_grouped, width = 500,
+                           disabled = ["_tag", "_fileName"],
+                           hide_index = True,
+                           column_config = {
+                               "_tag": st.column_config.TextColumn(
+                                   "你的類別"
+                               ),
+                               "_fileName": st.column_config.ProgressColumn(
+                                   "文獻數",
+                                    min_value = 0,
+                                    format="%f",
+                                    max_value = 50,
+                                    width = "small"
+                               )
+                           })
+
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Authentication

@@ -5,10 +5,9 @@ import uuid
 # model = LlmManager.init_gemini_model("請依據我輸入的概念，產出與之有關的五個關鍵字。用中文")
 # response = LlmManager.gemini_api_call(model, "日本")
 # print(response)
-
-
-import random
-import string
+for i in range(5):
+    ind = DataManager.generate_random_index()
+    print(ind)
 
 # def generate_random_index():
 #     # Generate a random alphanumeric string

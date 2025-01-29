@@ -40,12 +40,14 @@ if "user_name" not in st.session_state:
 if "user_id" not in st.session_state:
     st.session_state["user_id"] = ""
 
+if "sheet_id" not in st.session_state:
+    st.session_state["sheet_id"] = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user'])
+
 if "user_docs" not in st.session_state:
-    st.session_state['user_docs'] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']), "user_docs")
+    st.session_state['user_docs'] = SheetManager.fetch(st.session_state["sheet_id"], "user_docs")
 
 if "user_tags" not in st.session_state:
-    st.session_state["user_tags"] = SheetManager.fetch(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']), "user_tags")
-    
+    st.session_state["user_tags"] = SheetManager.fetch(st.session_state["sheet_id"], "user_tags")   
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** HTML & CSS
@@ -70,12 +72,15 @@ def main():
     with st.sidebar:
         if st.button("登出", "logout"):
             st.session_state['logged_in'] = False
+            st.success("登出成功")
+            time.sleep(2)
             st.rerun()
         st.caption(f"Username: **{st.session_state['user_name']}**")
         Others.fetch_IP()
     
-    # * 定義主要頁面分頁：摘要產生器 / 標籤管理
-    TAB_SUMMARIZE, TAB_TAGS = st.tabs(["摘要產生器", "類別標籤管理"])
+    # * 定義主要頁面分頁：摘要產生器 / 提示模板
+    # TODO  新增提示模板頁面
+    TAB_SUMMARIZE = st.tabs(["摘要產生器"])[0]
 
     # *** 摘要產生器 ***
     with TAB_SUMMARIZE:
@@ -110,68 +115,51 @@ def main():
 
             # TODO 這段，未來會想要前後端分開寫，並用 async
             BOX_PREVIEW.empty()
-            progress_bar = st.progress(0, "(0%)正在處理...")
-            for i, row in st.session_state['pdfs_raw'].iterrows():
-                filename = row['filename'].replace(" ", "_")
-                contents = "\n".join(row['content'])
-                progress_bar.progress(i / len(st.session_state['pdfs_raw'].keys()), f"({round(i / len(st.session_state['pdfs_raw'].keys()), 2) * 100}%)「{filename}」...")
-                prompt = PromptManager.summarize(row["language"], row["additional_prompt"])
-                model = LlmManager.init_gemini_model(prompt)
-                response = LlmManager.gemini_api_call(model, contents)
-                summary = DataManager.find_json_object(response)
-                
-                # * Generate a random id for the doc
-                while True:
-                    docId = DataManager.generate_random_index()
-                    if docId not in st.session_state["user_docs"]["_fileId"].tolist():
-                        SheetManager.insert(sheet_id, "user_docs", [docId, filename, summary['summary'], dt.datetime.now().strftime("%I:%M%p on %B %d, %Y"), len(summary['summary']), st.session_state['user_id'], st.session_state["tag"]])
-                    break
-                else:
-                    pass
-                progress_bar.progress((i+1) / len(st.session_state['pdfs_raw'].keys()), f"({round((i+1) / len(st.session_state['pdfs_raw'].keys()), 2) * 100}%)正在處理「{filename}」...")
-            progress_bar.empty()
+            # ** Generate Summary
+            with st.spinner("摘要產生中，請勿切換或關閉頁面..."):
+                to_update = pd.DataFrame(columns = ["_fileId", "_fileName", "_summary", "_generatedTime", "_length", "_userId", "_tag"])
+                progress_bar = st.progress(0, "(0%)正在處理...")
+                for i, row in st.session_state['pdfs_raw'].iterrows():
+                    filename = row['filename'].replace(" ", "_")
+                    contents = "\n".join(row['content'])
+                    progress_bar.progress(i / len(st.session_state['pdfs_raw']), f"({round(i / len(st.session_state['pdfs_raw']), 2) * 100}%)「{filename}」...")
+                    prompt = PromptManager.summarize(row["language"], row["additional_prompt"])
+                    model = LlmManager.init_gemini_model(prompt)
+                    response = LlmManager.gemini_api_call(model, contents)
+                    summary = DataManager.find_json_object(response)
+                    
+                    # * Update the generated summary to cache
+                    while True:
+                        docId = DataManager.generate_random_index()       #  Generate a random id for the doc
+                        if docId not in st.session_state["user_docs"]["_fileId"].tolist():
+                            to_update.loc[len(to_update), ["_fileId", "_fileName", "_summary", "_generatedTime", "_length", "_userId", "_tag"]] = [docId, filename, summary['summary'], dt.datetime.now().strftime("%I:%M%p on %B %d, %Y"), len(summary['summary']), st.session_state['user_id'], st.session_state["tag"]]
+                        break
+                    else:
+                        pass
+
+                progress_bar.empty()
+
+            # ** Update to database
+            with st.spinner("正在更新至資料庫"):
+                # * acquire a lock  
+                SheetManager.acquire_lock(st.session_state["sheet_id"], "user_docs")
+                # * update
+                for _, row in to_update.iterrows():
+                    SheetManager.insert(sheet_id, "user_docs", row.tolist())
+                # * release the lock
+                SheetManager.release_lock(st.session_state["sheet_id"], "user_docs")
+            
+            # ** Complete message
             st.success("完成！請至文獻摘要資料庫查詢。")
             time.sleep(1.5)
             del st.session_state["user_docs"]
-            del st.session_state["pdfs_raw"]
+            del to_update
             st.rerun()
 
-    # *** 標籤管理 ***
-    with TAB_TAGS:
-        BOX_PREVIEW.empty()
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            tag_to_add = st.text_input("新增類別")
-            if st.button("新增"):
-                
-                if tag_to_add:
-                    if tag_to_add in st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"].tolist():
-                        st.warning("該類別已存在")
-                    else:
-                        with st.spinner("新增中"):
-                            SheetManager.insert(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']), 
-                                                "user_tags", 
-                                                [st.session_state['user_id'], tag_to_add])
-                            del st.session_state["user_tags"]
-                            st.rerun()
-                else:
-                    st.warning("請輸入欲新增的類別")
-        with c2:
-            tag_to_delete = st.selectbox("刪除類別", st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"].tolist())
-            if st.button("刪除"):
-                with st.spinner("刪除中"):
-                    SheetManager.delete_row(SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
-                                            "user_tags",
-                                            st.session_state["user_tags"][(st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]) & (st.session_state["user_tags"]["tags"] == tag_to_delete)].index.tolist())
-                    del st.session_state["user_tags"]
-                    time.sleep(1)
-                    st.rerun()
-        with c3:
-            st.dataframe(st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"], width = 500)
             
     # *** 文獻原始資料預覽 ***
     with BOX_PREVIEW.container():
-        st.session_state["pdfs_raw"] = st.data_editor(st.session_state["pdfs_raw"], 
+        preview_cache = st.data_editor(st.session_state["pdfs_raw"], 
                     disabled = ["length"], 
                     column_order = ["selected", "filename", "content", "tag", "language", "additional_prompt"],
                     column_config = {
@@ -186,7 +174,7 @@ def main():
                             "類別標籤", 
                             help = "該文獻的類別標籤",
                             width = "small",
-                            options = st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["tags"].tolist(),
+                            options = st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["_tag"].tolist(),
                             required = True
                         ),
                         "language": st.column_config.SelectboxColumn(
@@ -209,8 +197,9 @@ def main():
                     hide_index = True,
                     width = 1000)
         if st.button("刪除所選檔案", key = "delete_pdf"):
-            st.session_state["pdfs_raw"] = st.session_state["pdfs_raw"][st.session_state["pdfs_raw"]["selected"] == False]
-            st.rerun()
+            with st.spinner("刪除中"):
+                st.session_state["pdfs_raw"] = preview_cache[preview_cache["selected"] == False]
+                st.rerun()
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Authentication
