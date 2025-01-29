@@ -111,7 +111,7 @@ class SheetManager:
                     sheet = client.open_by_key(sheet_id)
                     worksheet = sheet.worksheet(worksheet_name)
                     pos = f"{mapping[worksheet_name][column]}{idx + 2}"
-                    worksheet.update(pos, value)
+                    worksheet.update_acell(pos, value)
                     
                 except Exception as e:
                     st.write(f"Connection Failed: {e}")
@@ -167,7 +167,7 @@ class SheetManager:
 
                 if lock_status == "Unlocked":
                     # Acquire the lock
-                    worksheet.update(range_name = lock_maps[worksheet_name], values = [[st.session_state["user_id"]]])
+                    worksheet.update_acell(lock_maps[worksheet_name], st.session_state["user_id"])
                     
                     return True
                 
@@ -199,7 +199,7 @@ class SheetManager:
         lock_status = worksheet.acell(lock_maps[worksheet_name]).value
 
         if lock_status == st.session_state["user_id"]:
-            worksheet.update(lock_maps[worksheet_name], "Unlocked")
+            worksheet.update_acell(lock_maps[worksheet_name], "Unlocked")
             return True
         else:
             st.write("Lock is not held by you!")
