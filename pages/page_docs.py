@@ -14,27 +14,6 @@ st.set_page_config(page_title = "Easy Essay 文獻摘要工具",
     })
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-# *** Sidebar Config
-with st.sidebar:
-    
-    # * Icon & Title
-    text_box, icon_box = st.columns((0.7, 0.3))
-    with icon_box:
-        st.markdown(f'''
-                        <img class="image" src="data:image/jpeg;base64,{DataManager.image_to_b64(f"./pics/icon.png")}" alt="III Icon" style="width:500px;">
-                    ''', unsafe_allow_html = True)
-    with text_box:
-        st.write(" ")
-        st.header("Easy Essay 文獻摘要")
-
-    # * Pages
-    st.page_link("index.py", label = '文獻摘要產生器')
-    st.page_link("./pages/page_docs.py", label = '文獻摘要資料庫')
-    # st.page_link("./pages/page_chat.py", label = '資料查詢')
-
-    Others.fetch_IP()
-
-# * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** Session State Config
 if "pdfs_raw" not in st.session_state:
     st.session_state["pdfs_raw"] = pd.DataFrame(columns = ["filename", "content", "tag", "language", "selected", "additional_prompt"])
@@ -60,7 +39,27 @@ if "user_docs" not in st.session_state:
 if "user_tags" not in st.session_state:
     st.session_state["user_tags"] = SheetManager.fetch(st.session_state["sheet_id"], "user_tags")
 
+# * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# *** Sidebar Config
+with st.sidebar:
+    
+    # * Icon & Title
+    text_box, icon_box = st.columns((0.7, 0.3))
+    with icon_box:
+        st.markdown(f'''
+                        <img class="image" src="data:image/jpeg;base64,{DataManager.image_to_b64(f"./pics/icon.png")}" alt="III Icon" style="width:500px;">
+                    ''', unsafe_allow_html = True)
+    with text_box:
+        st.write(" ")
+        st.header("Easy Essay 文獻摘要")
 
+    # * Pages
+    st.page_link("./pages/page_account.py", label = '帳戶', icon = ":material/account_circle:")
+    if st.session_state["logged_in"]:
+        st.page_link("index.py", label = '文獻摘要產生器', icon = ":material/edit_square:")
+        st.page_link("./pages/page_docs.py", label = '文獻摘要資料庫', icon = ":material/folder_open:")
+
+    Others.fetch_IP()
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** HTML & CSS
 st.html("""<style>
@@ -80,19 +79,14 @@ div.stButton > button {
 def main():
     st.title("摘要資料庫")
     
-    # * 登入後顯示使用者名稱與登出按鈕
+    # * 登入後顯示使用者名稱與重新整理按鈕
     with st.sidebar:
-        if st.button("重新整理", key = "reload"):
+        if st.button("重新整理", key = "reload", icon = ":material/refresh:"):
             del st.session_state["user_docs"]
             del st.session_state["user_tags"]
             st.rerun()
-            
-        if st.button("登出", "logout"):
-            st.session_state['logged_in'] = False
-            st.success("登出成功")
-            time.sleep(2)
-            st.rerun()
-        st.caption(f"Username: **{st.session_state['user_name']}**")
+    
+        st.caption(f"Logged in as: **{st.session_state['user_id']}**")
 
     # * 定義主要頁面分頁：摘要產生器 / 標籤管理
     TAB_READ, TAB_EDIT, TAB_TAGS = st.tabs(["文獻摘要檢閱", "文獻摘要一覽", "類別標籤管理"])
@@ -111,6 +105,8 @@ def main():
                 st.markdown(res, unsafe_allow_html = True, help = "hah")
             except:
                 st.warning("該分類下**尚無文獻摘要**資料。請至**文獻摘要產生器**產出。")
+                if st.button("文獻摘要產生器", icon = ":material/edit_square:"):
+                    st.switch_page("index.py")
     
     # *** 文獻摘要一覽 & 編輯 ***
     with TAB_EDIT:
@@ -171,7 +167,7 @@ def main():
                     if st.button("取消"):
                         st.rerun()
 
-            if st.button("從資料庫中刪除所選檔案", key = "delete_summary"):
+            if st.button("從資料庫中刪除所選檔案", key = "delete_summary", icon = ":material/delete_forever:"):
                 if len(edit_files[edit_files['_selected'] == True]) == 0:
                     st.warning("請選擇欲刪除的文獻摘要")
                     time.sleep(1)
@@ -212,7 +208,7 @@ def main():
                 edit_files['_modified'] = st.session_state['user_docs']['_tag'] != edit_files['_tag']
                 # id: new tag
                 update_dict = {row["_fileId"]: row["_tag"] for _, row in edit_files.iterrows() if row['_modified']} 
-            if st.button("儲存文獻類別變更"):
+            if st.button("儲存文獻類別變更" , icon = ":material/save:"):
                 if update_dict == {}:
                     st.warning("無待儲存的變更")
                     time.sleep(1.5)
@@ -249,7 +245,7 @@ def main():
         with c1:
             tag_to_add = st.text_input("新增類別", key = "add_tag")
 
-            if st.button("新增"):
+            if st.button("新增", icon = ":material/new_label:"):
                 if tag_to_add:
                     if tag_to_add in st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["_tag"].tolist():
                         st.warning("該類別已存在")
@@ -279,7 +275,7 @@ def main():
             available_tags = st.session_state["user_tags"][st.session_state["user_tags"]["_userId"] == st.session_state["user_id"]]["_tag"].tolist()
             available_tags.remove("default")
             tags_to_delete = st.multiselect("刪除類別", available_tags)
-            if st.button("刪除"):
+            if st.button("刪除", icon = ":material/delete_forever:"):
                 if not tags_to_delete:
                     st.warning("請選擇欲刪除的類別")
                     time.sleep(1)

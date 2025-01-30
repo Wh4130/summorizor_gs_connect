@@ -14,27 +14,6 @@ st.set_page_config(page_title = "Easy Essay 文獻摘要工具",
 - Database Design - Google Sheets
 - Developed by - **[Wally, Huang Lin Chun](https://antique-turn-ad4.notion.site/Wally-Huang-Lin-Chun-182965318fa7804c86bdde557fa376f4)**"""
     })
-
-# * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-# *** Sidebar Config
-with st.sidebar:
-    
-    # * Icon & Title
-    text_box, icon_box = st.columns((0.7, 0.3))
-    with icon_box:
-        st.markdown(f'''
-                        <img class="image" src="data:image/jpeg;base64,{DataManager.image_to_b64(f"./pics/icon.png")}" alt="III Icon" style="width:500px;">
-                    ''', unsafe_allow_html = True)
-    with text_box:
-        st.write(" ")
-        st.header("Easy Essay 文獻摘要")
-
-    # * Pages
-    st.page_link("index.py", label = '文獻摘要產生器')
-    st.page_link("./pages/page_docs.py", label = '文獻摘要資料庫')
-    # st.page_link("./pages/page_chat.py", label = '資料查詢')
-
-    Others.fetch_IP()
         
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
@@ -61,7 +40,29 @@ if "user_docs" not in st.session_state:
     st.session_state['user_docs'] = SheetManager.fetch(st.session_state["sheet_id"], "user_docs")
 
 if "user_tags" not in st.session_state:
-    st.session_state["user_tags"] = SheetManager.fetch(st.session_state["sheet_id"], "user_tags")   
+    st.session_state["user_tags"] = SheetManager.fetch(st.session_state["sheet_id"], "user_tags") 
+
+# * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# *** Sidebar Config
+with st.sidebar:
+    
+    # * Icon & Title
+    text_box, icon_box = st.columns((0.7, 0.3))
+    with icon_box:
+        st.markdown(f'''
+                        <img class="image" src="data:image/jpeg;base64,{DataManager.image_to_b64(f"./pics/icon.png")}" alt="III Icon" style="width:500px;">
+                    ''', unsafe_allow_html = True)
+    with text_box:
+        st.write(" ")
+        st.header("Easy Essay 文獻摘要")
+
+    # * Pages
+    st.page_link("./pages/page_account.py", label = '帳戶', icon = ":material/account_circle:")
+    if st.session_state["logged_in"]:
+        st.page_link("index.py", label = '文獻摘要產生器', icon = ":material/edit_square:")
+        st.page_link("./pages/page_docs.py", label = '文獻摘要資料庫', icon = ":material/folder_open:")
+
+    Others.fetch_IP()  
 
 # * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 # *** HTML & CSS
@@ -83,22 +84,17 @@ div.stButton > button {
 def main():
     st.title("文獻摘要製作")
     
-    # * 登入後顯示使用者名稱與登出按鈕
+    # * 登入後顯示使用者名稱與重新整理按鈕
     with st.sidebar:
-        if st.button("重新整理", "reload"):
+        if st.button("重新整理", "reload", icon = ":material/refresh:"):
             del st.session_state["pdfs_raw"]
             st.rerun()
             
-        if st.button("登出", "logout"):
-            st.session_state['logged_in'] = False
-            st.success("登出成功")
-            time.sleep(2)
-            st.rerun()
-        st.caption(f"Username: **{st.session_state['user_name']}**")
+        st.caption(f"Logged in as: **{st.session_state['user_id']}**")
         # Others.fetch_IP()
     
     # * 定義主要頁面分頁：摘要產生器 / 提示模板
-    # TODO  新增提示模板頁面
+
     TAB_SUMMARIZE, TAB_PROMPT_TEMP = st.tabs(["摘要產生器", "提示模板"])
 
     # *** 摘要產生器 ***
@@ -106,9 +102,9 @@ def main():
         # * 定義頁面區塊
         cl, cr = st.columns(2)
         with cl:
-            button_upload = st.button("點擊上傳", key = "upload")
+            button_upload = st.button("點擊上傳", key = "upload", icon = ":material/upload:")
         with cr:
-            button_start = st.button("開始摘要", key = "summarize", type = "primary")
+            button_start = st.button("開始摘要", key = "summarize", type = "primary", icon = ":material/start:")
         
         if button_upload:
             DataManager.FORM_pdf_input()
@@ -219,7 +215,7 @@ def main():
                     },
                     hide_index = True,
                     width = 1000)
-        if st.button("刪除所選檔案", key = "delete_pdf"):
+        if st.button("刪除所選檔案", key = "delete_pdf", icon = ":material/delete:"):
             with st.spinner("刪除中"):
                 st.session_state["pdfs_raw"] = preview_cache[preview_cache["selected"] == False]
                 st.rerun()

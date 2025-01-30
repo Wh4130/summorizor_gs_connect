@@ -326,6 +326,9 @@ class UserManager:
                 st.session_state['user_name'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_email'] == user_id, "_username"].tolist()[0]
                 st.session_state['user_id'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_email'] == user_id, "_userId"].tolist()[0]
 
+            st.session_state['user_email'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_userId'] == st.session_state["user_id"], "_email"].tolist()[0]
+            st.session_state['_registerTime'] = st.session_state['user_infos'].loc[st.session_state['user_infos']['_userId'] == st.session_state["user_id"], "_registerTime"].tolist()[0]
+
             del ps_hash_cached
             del st.session_state["user_infos"]
             st.rerun()
@@ -368,10 +371,11 @@ class UserManager:
             
             # * 註冊資料送出
             with st.spinner("註冊中"):
+                now = dt.datetime.now().strftime("%I:%M%p on %B %d, %Y")
                 SheetManager.insert(
                     sheet_id = SheetManager.extract_sheet_id(st.secrets['gsheet-urls']['user']),
                     worksheet = "user_info",
-                    row = [username, user_id, email, UserManager.ps_hash(password_), dt.datetime.now().strftime("%I:%M%p on %B %d, %Y")]
+                    row = [username, user_id, email, UserManager.ps_hash(password_), now]
                 )
                 while True:
                     default_tag_id = DataManager.generate_random_index()
@@ -387,9 +391,62 @@ class UserManager:
             st.session_state["logged_in"] = True
             st.session_state['user_name'] = username
             st.session_state['user_id'] = user_id
+            st.session_state['user_email'] = email
+            st.session_state['_registerTime'] = now
             del st.session_state["user_infos"]
             del st.session_state["user_tags"]
             st.rerun()
+
+    @staticmethod
+    @st.dialog("確認刪除帳號")
+    def deregister():
+        st.warning("注意：\n\n此操作將刪除所有用戶資料，包含您的文件摘要資料。此操作無法復原。", icon = ':material/warning:')
+        claim = st.text_input(f"若確認要刪除帳號，請輸入以下聲明：\n\n:red[**I confirm the deletion of the account with user ID {st.session_state['user_id']}**]")
+        if st.button("確認刪除", key = "confirm_deregister"):
+
+            # *** Check if the claim is correct
+            if claim != f"I confirm the deletion of the account with user ID {st.session_state['user_id']}":
+                st.warning("請輸入刪除帳號之聲明")
+                st.stop()
+
+            # *** Start deleting user informations
+            # * deleting user info
+            with st.spinner("刪除用戶資料..."):
+                SheetManager.acquire_lock(st.session_state["sheet_id"],
+                                        "user_info")
+                st.session_state['user_info'] = SheetManager.fetch(st.session_state["sheet_id"], "user_info")
+                user_idx = st.session_state['user_info'][st.session_state['user_info']['_userId'] == st.session_state['user_id']].index.tolist()
+                SheetManager.delete_row(st.session_state["sheet_id"], "user_info", user_idx)
+                SheetManager.release_lock(st.session_state["sheet_id"],
+                                        "user_info")
+                
+            # * deleting user docs
+            with st.spinner("刪除用戶文件..."):
+                SheetManager.acquire_lock(st.session_state["sheet_id"],
+                                        "user_docs")
+                st.session_state['user_docs'] = SheetManager.fetch(st.session_state["sheet_id"], "user_docs")
+                user_docs_idxs = st.session_state['user_docs'][st.session_state['user_docs']['_userId'] == st.session_state['user_id']].index.tolist()
+                SheetManager.delete_row(st.session_state["sheet_id"], "user_docs", user_docs_idxs)
+                SheetManager.release_lock(st.session_state["sheet_id"],
+                                        "user_docs")
+                
+            # * deleting user tags
+            with st.spinner("刪除用戶分類標籤..."):
+                SheetManager.acquire_lock(st.session_state["sheet_id"],
+                                        "user_tags")
+                st.session_state['user_tags'] = SheetManager.fetch(st.session_state["sheet_id"], "user_tags")
+                user_tags_idxs = st.session_state['user_tags'][st.session_state['user_tags']['_userId'] == st.session_state['user_id']].index.tolist()
+                SheetManager.delete_row(st.session_state["sheet_id"], "user_tags", user_tags_idxs)
+                SheetManager.release_lock(st.session_state["sheet_id"],
+                                        "user_tags")
+            
+            st.success("刪除成功！")
+            time.sleep(1.5)
+            for session in ["user_email", "user_id", "_registerTime"]:
+                del st.session_state[session]
+            st.session_state['logged_in'] = False
+            st.rerun()
+            
 
 class PromptManager:
 
